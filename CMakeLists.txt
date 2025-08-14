@@ -1,41 +1,64 @@
-cmake_minimum_required(VERSION 3.16)
-project(merge_matrices LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.18)
+project(combine_chunklengths LANGUAGES CXX)
 
-# ---- Options ---------------------------------------------------------------
-option(ENABLE_OPENMP "Build with OpenMP parallelism" ON)
-option(USE_LIBDEFLATE "Link against libdeflate instead of zlib" OFF)
+# ---------------------------------------------------------------------------
+# Options
+# ---------------------------------------------------------------------------
+option(ENABLE_OPENMP   "Build with OpenMP support"        OFF)
+option(USE_LIBDEFLATE  "Use libdeflate instead of zlib"   OFF)
+option(ENABLE_LTO      "Enable link-time optimisation"    ON)
 
-# ---- Global compile features & flags ---------------------------------------
+# ---------------------------------------------------------------------------
+# Build type
+# ---------------------------------------------------------------------------
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
+# ---------------------------------------------------------------------------
+# Toolchain-agnostic compiler settings
+# ---------------------------------------------------------------------------
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Add very aggressive Release flags *in addition* to CMake's defaults
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    message(STATUS "Using aggressive compiler optimisations")
-    string(APPEND CMAKE_CXX_FLAGS_RELEASE
-           " -O3 -march=native -fstrict-aliasing -DNDEBUG")
-    # Try LTO if the toolchain supports it
-    include(CheckIPOSupported)
+# Core warnings
+add_compile_options(-Wall -Wextra -Wpedantic -Wconversion)
+
+# Optimisation flags for Release variants
+if(CMAKE_BUILD_TYPE MATCHES "^Release$" OR CMAKE_BUILD_TYPE MATCHES "^RelWithDebInfo$")
+    # Enable aggressive optimisation, strict aliasing, native tuning, and C++ exceptions
+    add_compile_options(-O3 -march=native -fstrict-aliasing -fexceptions -fno-rtti)
+endif()
+
+# ---------------------------------------------------------------------------
+# LTO / IPO
+# ---------------------------------------------------------------------------
+include(CheckIPOSupported)
+if(ENABLE_LTO)
     check_ipo_supported(RESULT ipo_ok LANGUAGES CXX)
     if(ipo_ok)
-        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+        message(STATUS "LTO enabled")
+    else()
+        message(STATUS "LTO requested but unsupported – skipped")
     endif()
 endif()
 
-# Always compile with a few sanity warnings
-add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-Wall;-Wextra;-Wpedantic>")
-
-# ---- Dependencies ----------------------------------------------------------
-# zlib or libdeflate
+# ---------------------------------------------------------------------------
+# Dependencies – decompression library
+# ---------------------------------------------------------------------------
 if(USE_LIBDEFLATE)
-    find_package(libdeflate REQUIRED CONFIG)   # assumes you have a CMake package ↓
-    set(DEF_LIB libdeflate::libdeflate)
+    find_package(libdeflate CONFIG REQUIRED)
+    set(DEFLATE_LIB libdeflate::libdeflate)
 else()
     find_package(ZLIB REQUIRED)
-    set(DEF_LIB ZLIB::ZLIB)
+    set(DEFLATE_LIB ZLIB::ZLIB)
 endif()
 
+# ---------------------------------------------------------------------------
 # Optional OpenMP
+# ---------------------------------------------------------------------------
+set(OPENMP_LIB "")
 if(ENABLE_OPENMP)
     find_package(OpenMP)
     if(OpenMP_CXX_FOUND)
@@ -46,12 +69,44 @@ if(ENABLE_OPENMP)
     endif()
 endif()
 
-# ---- Executable(s) ---------------------------------------------------------
-# Add whichever source files you want – here we keep both the original
-# and the new speed-tuned version so you can A/B test them.
-add_executable(combine_chunklengths_opt combine_chunklengths_opt.cpp)
-target_link_libraries(combine_chunklengths_opt PUBLIC ${DEF_LIB} ${OPENMP_LIB})
+# ---------------------------------------------------------------------------
+# Output directories – executables now land in <source>/bin
+# ---------------------------------------------------------------------------
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+file(MAKE_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 
-add_executable(merge_matrices combine_chunklengths.cpp)   # original
-target_link_libraries(merge_matrices PUBLIC ${DEF_LIB} ${OPENMP_LIB})
+# ---------------------------------------------------------------------------
+# Single (verbose) target
+# ---------------------------------------------------------------------------
+add_executable(combine_chunklengths combine_chunklengths.cpp)
+
+# Silence cosmetic warnings seen on GCC
+target_compile_options(combine_chunklengths PRIVATE -Wno-comment -Wno-conversion)
+
+# Link dependencies
+target_link_libraries(combine_chunklengths PRIVATE ${DEFLATE_LIB} ${OPENMP_LIB})
+
+# Definitions for optional features
+if(ENABLE_OPENMP)
+    target_compile_definitions(combine_chunklengths PRIVATE ENABLE_OPENMP)
+endif()
+if(USE_LIBDEFLATE)
+    target_compile_definitions(combine_chunklengths PRIVATE USE_LIBDEFLATE)
+endif()
+
+# ---------------------------------------------------------------------------
+# Misc tooling
+# ---------------------------------------------------------------------------
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# ---------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------
+message(STATUS "============= Build configuration summary =============")
+message(STATUS "  Build type          : ${CMAKE_BUILD_TYPE}")
+message(STATUS "  LTO enabled         : ${CMAKE_INTERPROCEDURAL_OPTIMIZATION}")
+message(STATUS "  Decompressor lib    : ${DEFLATE_LIB}")
+message(STATUS "  OpenMP enabled      : ${ENABLE_OPENMP}")
+message(STATUS "  Binaries output dir : ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+message(STATUS "========================================================")
 
