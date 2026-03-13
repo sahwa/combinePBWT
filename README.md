@@ -1,48 +1,35 @@
 # combine_chunklengths
 
-combinePBWT is a fast and memory-efficient combiner for **ChromoPainter**, **pbwt**, and **SparsePainter** chunklength output files. It tool reads multiple gzipped chromosome-specific output files and combines them into a single summed matrix. It is designed for very large datasets and emphasizes:
+Fast, memory-efficient combiner for **ChromoPainter**, **PBWT**, and **SparsePainter** chunklength output files.
 
-* ✅ Streaming processing (meaning low memory overhead per file)
-* ✅ Robust parsing of long headers
-* ✅ Whitespace-safe tokenization
-* ✅ Timestamped progress logging
-* ✅ Gzipped input and output support
-* ✅ Large matrix support (with allocation checks)
+This tool reads multiple chromosome-specific `.gz` chunklength files and combines them into a single summed matrix.
 
----
+Designed for large-scale datasets with:
 
-## Overview
-
-`combine_chunklengths`:
-
-* Reads multiple `.gz` chunklength files (one per chromosome)
-* Identifies the ID column automatically (based on software type)
-* Sums chunklength matrices across chromosomes
-* Writes a gzipped combined matrix
-
-Supported types:
-
-* `pbwt`
-* `chromopainter`
-* `SparsePainter`
+* Streaming gzipped input
+* Robust header parsing
+* Whitespace-safe tokenization
+* Timestamped progress logging
+* Memory allocation checks
+* Gzipped output
 
 ---
 
 ## Requirements
 
-* C++17 compatible compiler
+* C++17 compatible compiler (GCC ≥ 7, Clang ≥ 6 recommended)
 * CMake ≥ 3.10
 * zlib development library
 
 ### Install zlib
 
-**Ubuntu/Debian**
+**Ubuntu / Debian**
 
 ```bash
 sudo apt-get install zlib1g-dev
 ```
 
-**CentOS/RHEL**
+**CentOS / RHEL**
 
 ```bash
 sudo yum install zlib-devel
@@ -56,35 +43,32 @@ brew install zlib
 
 ---
 
-## Building with CMake
+## Build Instructions (CMake)
 
-### 1️⃣ Directory Structure
-
-```
-combine_chunklengths/
-├── CMakeLists.txt
-└── main.cpp
-```
-
-Save the provided source code as `main.cpp`.
-
----
-
----
-
-### 2️⃣ Compile
+Since the repository already includes a `CMakeLists.txt`, you can build as follows:
 
 ```bash
+git clone https://github.com/<your-username>/combinePBWT.git
+cd combinePBWT
+
 mkdir build
 cd build
+
 cmake ..
 make
 ```
 
-The executable will be created as:
+The executable will be created in:
 
 ```
 build/combine_chunklengths
+```
+
+For optimized builds:
+
+```bash
+cmake -DCMAKE_BUILD_TYPE=Release ..
+make
 ```
 
 ---
@@ -102,7 +86,106 @@ combine_chunklengths \
 
 ### Arguments
 
-| Option            | Description                     |
-| ----------------- | ------------------------------- |
-| `-p`, `--pre_chr` | Prefix before chromosome number |
-| `-a`,             |                                 |
+| Option             | Description                                      |
+| ------------------ | ------------------------------------------------ |
+| `-p`, `--pre_chr`  | Prefix before chromosome number                  |
+| `-a`, `--post_chr` | Suffix after chromosome number                   |
+| `-c`, `--chrs`     | Comma-separated chromosome list (e.g. `1,2,3,4`) |
+| `-o`, `--output`   | Output gzipped file                              |
+| `-t`, `--type`     | `pbwt`, `chromopainter`, or `SparsePainter`      |
+
+---
+
+## Example
+
+If your files are:
+
+```
+chunk_chr1.out.gz
+chunk_chr2.out.gz
+chunk_chr3.out.gz
+```
+
+Run:
+
+```bash
+./combine_chunklengths \
+  -p chunk_chr \
+  -a .out.gz \
+  -c 1,2,3 \
+  -o combined.out.gz \
+  -t chromopainter
+```
+
+---
+
+## Supported Input Types
+
+The tool automatically detects the ID column based on `--type`:
+
+| Type          | Required Header Column |
+| ------------- | ---------------------- |
+| pbwt          | `RECIPIENT`            |
+| chromopainter | `Recipient`            |
+| SparsePainter | `indnames`             |
+
+The ID column is removed during summation and restored in the output.
+
+---
+
+## Output
+
+* Gzipped matrix file
+* Summed values across chromosomes
+* Float precision: 6 decimal places
+* Preserves row and column labels
+
+---
+
+## Logging
+
+The program prints timestamped progress messages:
+
+```
+2026-03-13 12:01:22  Processing chunk_chr1.out.gz
+2026-03-13 12:01:45  Finished chunk_chr1.out.gz  rows=5000
+2026-03-13 12:02:10  Done  (5000×5000)
+```
+
+Stdout is unbuffered for real-time monitoring (useful on clusters).
+
+---
+
+## Memory Usage
+
+The full output matrix is stored in memory:
+
+```
+memory ≈ nrows × ncols × 4 bytes
+```
+
+Example:
+
+* 10,000 × 10,000 matrix ≈ 400 MB RAM
+
+Ensure sufficient memory for very large datasets.
+
+---
+
+## Notes
+
+* Input files must have consistent dimensions.
+* Row count mismatches will trigger warnings.
+* Designed for high-performance genomic pipelines.
+
+---
+
+## License
+
+Add your preferred license here.
+
+---
+
+## Author
+
+Add author / contact information here.
