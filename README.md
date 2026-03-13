@@ -1,32 +1,44 @@
 # combine_chunklengths
 
-Fast, memory-efficient combiner for **ChromoPainter**, **PBWT**, and **SparsePainter** chunklength output files.
+combinePBWT is a high-performance combiner for **ChromoPainter**, **PBWT**, and **SparsePainter** chunklength output files.
 
-This tool reads multiple chromosome-specific `.gz` chunklength files and combines them into a single summed matrix.
+This tool reads multiple gzipped chromosome-specific matrices and combines them into a single summed matrix, optimized for very large genomic datasets.
 
-Designed for large-scale datasets with:
+---
 
-* Streaming gzipped input
-* Robust header parsing
-* Whitespace-safe tokenization
-* Timestamped progress logging
-* Memory allocation checks
-* Gzipped output
+## Features
+
+* Streaming `.gz` input (low per-file memory overhead)
+* Full in-memory accumulation matrix
+* Timestamped, unbuffered progress logging
+* Automatic ID column detection
+* Strict compiler warnings
+* Aggressive `-O3 -march=native` optimization
+* Optional:
+
+  * Link-Time Optimization (LTO)
+  * OpenMP support
+  * libdeflate instead of zlib
 
 ---
 
 ## Requirements
 
-* C++17 compatible compiler (GCC ≥ 7, Clang ≥ 6 recommended)
-* CMake ≥ 3.10
+* CMake ≥ 3.18
+* C++17 compatible compiler (GCC ≥ 9 recommended)
 * zlib development library
+  *(or libdeflate if enabled)*
 
-### Install zlib
+---
+
+##  Dependencies
+
+### Default (zlib)
 
 **Ubuntu / Debian**
 
 ```bash
-sudo apt-get install zlib1g-dev
+sudo apt install zlib1g-dev
 ```
 
 **CentOS / RHEL**
@@ -35,7 +47,7 @@ sudo apt-get install zlib1g-dev
 sudo yum install zlib-devel
 ```
 
-**macOS (Homebrew)**
+**macOS**
 
 ```bash
 brew install zlib
@@ -43,32 +55,71 @@ brew install zlib
 
 ---
 
-## Build Instructions (CMake)
-
-Since the repository already includes a `CMakeLists.txt`, you can build as follows:
+### Optional: libdeflate (faster decompression)
 
 ```bash
-git clone https://github.com/<your-username>/combinePBWT.git
+sudo apt install libdeflate-dev
+```
+
+---
+
+## Build Instructions
+
+The repository already includes a complete `CMakeLists.txt`.
+
+### Standard Optimized Build (Recommended)
+
+```bash
+git clone https://github.com/sahwa/combinePBWT.git
 cd combinePBWT
 
 mkdir build
 cd build
 
-cmake ..
-make
+cmake -DCMAKE_BUILD_TYPE=Release ..
+make -j
 ```
 
-The executable will be created in:
+Executable will be placed in:
 
 ```
-build/combine_chunklengths
+bin/combine_chunklengths
 ```
 
-For optimized builds:
+*(Binaries are written to `<source>/bin` by design.)*
+
+---
+
+## Build Options
+
+You can enable additional features at configure time:
+
+### Enable OpenMP
 
 ```bash
-cmake -DCMAKE_BUILD_TYPE=Release ..
-make
+cmake -DENABLE_OPENMP=ON ..
+```
+
+### Use libdeflate instead of zlib
+
+```bash
+cmake -DUSE_LIBDEFLATE=ON ..
+```
+
+### Disable LTO
+
+```bash
+cmake -DENABLE_LTO=OFF ..
+```
+
+### Full Example (maximum performance build)
+
+```bash
+cmake \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DENABLE_OPENMP=ON \
+  -DUSE_LIBDEFLATE=ON \
+  ..
 ```
 
 ---
@@ -86,19 +137,19 @@ combine_chunklengths \
 
 ### Arguments
 
-| Option             | Description                                      |
-| ------------------ | ------------------------------------------------ |
-| `-p`, `--pre_chr`  | Prefix before chromosome number                  |
-| `-a`, `--post_chr` | Suffix after chromosome number                   |
-| `-c`, `--chrs`     | Comma-separated chromosome list (e.g. `1,2,3,4`) |
-| `-o`, `--output`   | Output gzipped file                              |
-| `-t`, `--type`     | `pbwt`, `chromopainter`, or `SparsePainter`      |
+| Option             | Description                                 |
+| ------------------ | ------------------------------------------- |
+| `-p`, `--pre_chr`  | Prefix before chromosome number             |
+| `-a`, `--post_chr` | Suffix after chromosome number              |
+| `-c`, `--chrs`     | Comma-separated chromosome list             |
+| `-o`, `--output`   | Output gzipped file                         |
+| `-t`, `--type`     | `pbwt`, `chromopainter`, or `SparsePainter` |
 
 ---
 
 ## Example
 
-If your files are:
+If files are:
 
 ```
 chunk_chr1.out.gz
@@ -109,7 +160,7 @@ chunk_chr3.out.gz
 Run:
 
 ```bash
-./combine_chunklengths \
+bin/combine_chunklengths \
   -p chunk_chr \
   -a .out.gz \
   -c 1,2,3 \
@@ -121,30 +172,36 @@ Run:
 
 ## Supported Input Types
 
-The tool automatically detects the ID column based on `--type`:
-
 | Type          | Required Header Column |
 | ------------- | ---------------------- |
 | pbwt          | `RECIPIENT`            |
 | chromopainter | `Recipient`            |
 | SparsePainter | `indnames`             |
 
-The ID column is removed during summation and restored in the output.
+The ID column is removed during summation and restored in output.
 
 ---
 
-## Output
+## Memory Usage
 
-* Gzipped matrix file
-* Summed values across chromosomes
-* Float precision: 6 decimal places
-* Preserves row and column labels
+The full matrix is stored in memory:
+
+```
+RAM ≈ nrows × ncols × 4 bytes
+```
+
+Example:
+
+* 10,000 × 10,000 → ~400 MB
+* 20,000 × 20,000 → ~1.6 GB
+
+Ensure sufficient RAM for large cohorts.
 
 ---
 
 ## Logging
 
-The program prints timestamped progress messages:
+The program prints timestamped progress:
 
 ```
 2026-03-13 12:01:22  Processing chunk_chr1.out.gz
@@ -152,40 +209,43 @@ The program prints timestamped progress messages:
 2026-03-13 12:02:10  Done  (5000×5000)
 ```
 
-Stdout is unbuffered for real-time monitoring (useful on clusters).
+Stdout is unbuffered — suitable for cluster monitoring.
 
 ---
 
-## Memory Usage
+## Compiler Details
 
-The full output matrix is stored in memory:
+Release builds automatically enable:
+
+* `-O3`
+* `-march=native`
+* `-fstrict-aliasing`
+* `-fexceptions`
+* `-fno-rtti`
+* Link-Time Optimization (if supported)
+
+Warnings:
 
 ```
-memory ≈ nrows × ncols × 4 bytes
+-Wall -Wextra -Wpedantic -Wconversion
 ```
-
-Example:
-
-* 10,000 × 10,000 matrix ≈ 400 MB RAM
-
-Ensure sufficient memory for very large datasets.
 
 ---
 
 ## Notes
 
-* Input files must have consistent dimensions.
-* Row count mismatches will trigger warnings.
-* Designed for high-performance genomic pipelines.
+* Input files must have identical dimensions.
+* Row mismatches trigger warnings.
+* Very large matrices may require high-memory nodes.
 
 ---
 
 ## License
 
-Add your preferred license here.
+Add license here.
 
 ---
 
-## Author
+## 👤 Author
 
-Add author / contact information here.
+sam morris - sam.morris@ndph.ox.ac.uk
