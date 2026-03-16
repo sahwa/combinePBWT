@@ -240,10 +240,6 @@ Warnings:
 
 ---
 
-## License
-
-Add license here.
-
 ---
 
 ## 👤 Author
